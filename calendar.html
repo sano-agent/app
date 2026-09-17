@@ -1,0 +1,1520 @@
+<!--
+  @fileoverview calendar.html
+  @description Calendário interativo de entradas do SanoAgent.
+  Visualiza entradas por data, navega por meses e exibe detalhes ao clicar.
+  @author SanoAgent Team
+  @version 1.1.0
+-->
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <?!= include('SharedTokens'); ?>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="Calendário de entradas do SanoAgent — visualize seus pensamentos e composições organizados por data.">
+  <title>Calendário — SanoAgent</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    /* ── Layout ────────────────────────────────────────────────────── */
+    .cal-page  { max-width: 900px; margin: 2rem auto; padding: 0 1rem; }
+    .cal-layout { display: grid; grid-template-columns: 1fr 300px; gap: 1.5rem; }
+    @media (max-width: 700px) { .cal-layout { grid-template-columns: 1fr; } }
+
+    /* ── Calendar widget ───────────────────────────────────────────── */
+    .cal-widget {
+      background: white;
+      border-radius: 12px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .cal-nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--primary-color);
+      color: white;
+      padding: 1rem 1.25rem;
+    }
+    .cal-nav h2 { font-size: 1.1rem; font-weight: 600; }
+    .cal-nav-btn {
+      background: rgba(255,255,255,0.2);
+      border: none;
+      color: white;
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      cursor: pointer;
+      font-size: 1rem;
+      transition: var(--transition);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .cal-nav-btn:hover { background: rgba(255,255,255,0.35); }
+
+    .cal-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+    }
+
+    .cal-weekday {
+      text-align: center;
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: #888;
+      padding: 0.75rem 0;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .cal-day {
+      min-height: 54px;
+      padding: 0.35rem;
+      border-right: 1px solid #f0f0f0;
+      border-bottom: 1px solid #f0f0f0;
+      cursor: pointer;
+      transition: background 0.15s;
+      position: relative;
+    }
+    .cal-day:hover              { background: #f0f7ff; }
+    .cal-day.other-month        { background: #fafafa; color: #ccc; }
+    .cal-day.today              { background: #e8f4fd; }
+    .cal-day.today .day-num     { background: var(--primary-color); color: white; border-radius: 50%; }
+    .cal-day.selected           { background: #d0eaff; }
+    .cal-day.has-entry          { }
+
+    .day-num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 26px; height: 26px;
+      font-size: 0.85rem;
+      font-weight: 500;
+    }
+
+    /* Entry dots */
+    .day-dots {
+      display: flex;
+      gap: 2px;
+      flex-wrap: wrap;
+      margin-top: 3px;
+    }
+    .day-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--primary-color);
+    }
+    .day-dot.composition { background: var(--secondary-color); }
+
+    /* ── Sidebar: day detail ──────────────────────────────────────── */
+    .cal-detail {
+      background: white;
+      border-radius: 12px;
+      box-shadow: var(--shadow);
+      padding: 1.25rem;
+    }
+    .cal-detail h3 { font-size: 1rem; color: var(--dark-color); margin-bottom: 1rem; }
+
+    .detail-entry {
+      padding: 0.75rem;
+      border-radius: 8px;
+      border-left: 3px solid var(--primary-color);
+      background: #f5f9ff;
+      margin-bottom: 0.75rem;
+      font-size: 0.88rem;
+    }
+    .detail-entry .entry-mood  { font-weight: 600; color: var(--dark-color); margin-bottom: 0.25rem; }
+    .detail-entry .entry-text  { color: #555; line-height: 1.5; }
+    .detail-entry .entry-comp  {
+      margin-top: 0.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      color: var(--secondary-color);
+      font-size: 0.8rem;
+      font-weight: 600;
+    }
+
+    .detail-empty {
+      text-align: center;
+      padding: 2rem 0.5rem;
+      color: #bbb;
+    }
+    .detail-empty .empty-icon { font-size: 2.5rem; margin-bottom: 0.5rem; }
+
+    /* ── Legend ───────────────────────────────────────────────────── */
+    .cal-legend {
+      display: flex;
+      gap: 1rem;
+      padding: 0.75rem 1rem;
+      border-top: 1px solid var(--border-color);
+      font-size: 0.8rem;
+      color: #666;
+      flex-wrap: wrap;
+    }
+    .legend-item { display: flex; align-items: center; gap: 0.35rem; }
+    .legend-dot  { width: 8px; height: 8px; border-radius: 50%; }
+
+    /* ── Monthly summary ──────────────────────────────────────────── */
+    .cal-summary {
+      background: white;
+      border-radius: 12px;
+      box-shadow: var(--shadow);
+      padding: 1.25rem;
+      margin-top: 1.5rem;
+      grid-column: 1 / -1;
+    }
+    .cal-summary h3 { font-size: 1rem; margin-bottom: 1rem; color: var(--dark-color); }
+    .summary-stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 1rem;
+    }
+    .summary-stat {
+      text-align: center;
+      padding: 1rem;
+      background: #f5f9ff;
+      border-radius: 8px;
+    }
+    .summary-stat .val { font-size: 1.8rem; font-weight: 700; color: var(--primary-color); }
+    .summary-stat .lbl { font-size: 0.8rem; color: #777; margin-top: 0.25rem; }
+  
+
+
+/* codex-school-community-ux: ajustes finos para uso recorrente por comunidade escolar */
+:root {
+  --codex-school-focus: #ffd166;
+  --codex-school-touch: 44px;
+  --codex-school-radius: 8px;
+  --codex-school-field-radius: 7px;
+  --codex-school-form-gap: 14px;
+  --codex-school-field-border: rgba(120, 132, 156, 0.45);
+  --codex-school-field-bg: rgba(255, 255, 255, 0.96);
+  --codex-school-field-text: #1f2937;
+  --codex-school-muted-text: #64748b;
+  --codex-school-soft-surface: rgba(248, 250, 252, 0.82);
+  --codex-school-safe-bottom: max(16px, env(safe-area-inset-bottom));
+}
+
+:where(html) {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+}
+
+:where(body) {
+  overscroll-behavior-y: contain;
+}
+
+:where(p, li, dd, dt, blockquote, figcaption, label, td, th) {
+  line-height: 1.5;
+}
+
+:where(main, .main, .content, .page, .app, .app-shell, .container, .dashboard, .workspace) {
+  padding-bottom: var(--codex-school-safe-bottom);
+}
+
+:where(a, button, .btn, .button, [role="button"], input, select, textarea, summary) {
+  min-height: var(--codex-school-touch);
+  touch-action: manipulation;
+}
+
+:where(button, .btn, .button, [role="button"], input[type="submit"], input[type="button"]) {
+  border-radius: var(--codex-school-radius) !important;
+  font-weight: 700;
+}
+
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 3px solid var(--codex-school-focus) !important;
+  outline-offset: 3px !important;
+}
+
+:where(label) {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  color: var(--codex-gentle-muted, var(--text-muted, var(--codex-school-muted-text)));
+  font-weight: 700;
+}
+
+:where(form) {
+  border-radius: var(--codex-school-radius) !important;
+}
+
+:where(fieldset) {
+  border-radius: var(--codex-school-radius) !important;
+  border-color: var(--codex-school-field-border);
+}
+
+:where(legend) {
+  padding-inline: 6px;
+  font-weight: 700;
+}
+
+:where(.form-group, .input-field, .field, .form-field, .control-group) {
+  margin-bottom: var(--codex-school-form-gap);
+}
+
+:where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select, textarea) {
+  width: min(100%, 100%);
+  border-radius: var(--codex-school-field-radius) !important;
+  border-color: var(--codex-school-field-border) !important;
+  background-color: var(--input-bg, var(--field-bg, var(--codex-school-field-bg)));
+  color: var(--input-text, var(--text-color, var(--codex-school-field-text)));
+  font-size: 16px !important;
+}
+
+:where(input::placeholder, textarea::placeholder) {
+  color: var(--placeholder-color, #94a3b8);
+  opacity: 1;
+}
+
+:where(input[required], select[required], textarea[required]) {
+  border-left: 3px solid var(--codex-gentle-primary-strong, #aecbfa) !important;
+}
+
+:where(input:disabled, select:disabled, textarea:disabled, button:disabled, [aria-disabled="true"]) {
+  cursor: not-allowed !important;
+  opacity: 0.68;
+}
+
+:where(.help, .hint, .help-text, .form-help, small) {
+  line-height: 1.45;
+  color: var(--codex-gentle-muted, var(--text-muted, var(--codex-school-muted-text)));
+}
+
+:where(.actions, .form-actions, .button-row, .toolbar, .topbar, nav, [role="toolbar"]) {
+  gap: 8px;
+}
+
+:where(.actions, .form-actions, .button-row) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+:where(.actions, .form-actions, .button-row) > :where(button, .btn, .button, [role="button"]) {
+  flex: 1 1 148px;
+}
+
+:where(.card, .panel, .box, .tile, .item, .list-item, .action-card) {
+  border-radius: var(--codex-school-radius) !important;
+}
+
+:where(.section, .surface, .widget, .modal-content, .dialog-content, .drawer, .dropdown, .menu) {
+  border-radius: var(--codex-school-radius) !important;
+}
+
+:where(.filters, .search-panel, .form-section) {
+  border-radius: var(--codex-school-radius) !important;
+  background: var(--codex-school-soft-surface);
+}
+
+:where(table) {
+  border-collapse: collapse;
+}
+
+:where(table, .table, .data-table) {
+  max-width: 100%;
+}
+
+:where(.table-wrap, .table-wrapper, .table-container, .responsive-table) {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+:where(th, td) {
+  vertical-align: top;
+}
+
+:where(.toast, .alert, .notice, .snackbar, [role="status"], [role="alert"]) {
+  border-radius: var(--codex-school-radius) !important;
+  line-height: 1.45;
+}
+
+@media (max-width: 420px) {
+  :where(body) {
+    font-size: 16px;
+  }
+
+  :where(h1) {
+    font-size: clamp(1.55rem, 1.35rem + 1vw, 2rem) !important;
+    line-height: 1.15 !important;
+  }
+
+  :where(h2) {
+    font-size: clamp(1.25rem, 1.1rem + 0.8vw, 1.55rem) !important;
+    line-height: 1.2 !important;
+  }
+
+  :where(.toolbar, .topbar, nav, [role="toolbar"]) {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+
+  :where(.hide-mobile, .desktop-only) {
+    display: none !important;
+  }
+}
+</style>
+  <style id="codex-mobile-a11y">
+  /* Mobile-first accessibility baseline for Chrome and Google-style readability. */
+  :where(html) {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    scroll-behavior: smooth;
+  }
+
+  :where(body) {
+    min-width: 0;
+    overflow-x: hidden;
+    line-height: 1.5;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  :where(p, li, dd, dt, blockquote, figcaption, label, td, th, input, select, textarea, button) {
+    line-height: 1.5;
+  }
+
+  :where(p, li, dd, dt, blockquote, figcaption) {
+    max-width: 72ch;
+  }
+
+  :where(button, [role="button"], input, select, textarea, a) {
+    touch-action: manipulation;
+  }
+
+  :where(button, [role="button"], input:not([type="hidden"]), select, textarea) {
+    font: inherit;
+    min-height: 44px;
+  }
+
+  :where(a, button, [role="button"], input, select, textarea, summary, [tabindex]):focus-visible {
+    outline: 3px solid #1a73e8;
+    outline-offset: 2px;
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.85);
+  }
+
+  :where(img, video, canvas, svg, iframe) {
+    max-width: 100%;
+  }
+
+  :where(img, video, canvas, svg) {
+    height: auto;
+  }
+
+  :where(table) {
+    max-width: 100%;
+  }
+
+  :where(.table-responsive, .table-wrapper, .data-table, .table-container, .responsive-table) {
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  :where(.container, .content, .main, .page, .page-content, .app-content, main) {
+    min-width: 0;
+  }
+
+  :where(.row, .cards, .card-grid, .grid, .toolbar, .actions, .button-group, .form-row) {
+    min-width: 0;
+  }
+
+  @media (max-width: 640px) {
+    :where(body) {
+      font-size: 16px;
+    }
+
+    :where(.container, .content, .page-content, .app-content, main) {
+      width: 100%;
+      max-width: 100%;
+    }
+
+    :where(.row, .cards, .card-grid, .grid, .toolbar, .actions, .button-group, .form-row) {
+      flex-wrap: wrap;
+    }
+
+    :where(input:not([type="checkbox"]):not([type="radio"]), select, textarea, button) {
+      max-width: 100%;
+    }
+
+    :where(.hide-on-mobile) {
+      display: none !important;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      scroll-behavior: auto !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+</style>
+<style>
+/* codex-s20-mobile-first: Samsung S20 / Chrome mobile baseline (360x800 CSS px) */
+@media screen {
+  :where(html) {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+  :where(*, *::before, *::after) {
+    box-sizing: border-box;
+  }
+  :where(body) {
+    min-width: 320px;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+  :where(main, .app, .page, .container, .content, .main-content, .dashboard, .view) {
+    max-width: 100%;
+  }
+  :where(img, video, canvas, svg) {
+    max-width: 100%;
+    height: auto;
+  }
+  :where(p, li, td, th, label, legend, button, a, h1, h2, h3, h4, h5, h6) {
+    overflow-wrap: anywhere;
+  }
+  :where(input, select, textarea, button) {
+    font: inherit;
+    max-width: 100%;
+  }
+  :where(input, select, textarea) {
+    font-size: max(16px, 1rem);
+  }
+  :where(button, [role="button"], input, select, textarea, a) {
+    touch-action: manipulation;
+  }
+  :where(.table-wrap, .table-wrapper, .table-responsive, .table-container, .responsive-table, .data-table-wrapper) {
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+@media (max-width: 480px) {
+  :where(body) {
+    font-size: 16px;
+  }
+  :where(.grid, .cards, .dashboard-grid, .stats-grid, .form-grid, .filters-grid) {
+    grid-template-columns: 1fr !important;
+  }
+  :where(.toolbar, .actions, .button-row, .filters, .form-actions, .modal-actions, .header-actions) {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  :where(.btn, button, input, select, textarea) {
+    min-height: 44px;
+  }
+  :where(table) {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  :where(th, td) {
+    white-space: nowrap;
+  }
+  :where(.card, .panel, .modal, .dialog, .drawer) {
+    max-width: calc(100vw - 24px);
+  }
+}
+@media (max-width: 360px) {
+  :where(body) {
+    padding-left: max(12px, env(safe-area-inset-left));
+    padding-right: max(12px, env(safe-area-inset-right));
+  }
+  :where(.card, .panel, .section, .modal-content, .dialog-content) {
+    padding: 12px;
+  }
+  :where(h1) {
+    font-size: clamp(1.45rem, 1.2rem + 2vw, 2rem);
+  }
+  :where(h2) {
+    font-size: clamp(1.2rem, 1rem + 1.4vw, 1.55rem);
+  }
+}
+</style>
+<style>
+/* codex-design-system: shared contrast, button sizing and minimal button icon styling */
+:root {
+  --codex-ds-primary: var(--primary, var(--color-primary, var(--theme-primary, #1a73e8)));
+  --codex-ds-primary-strong: var(--primary-dark, var(--color-primary-strong, var(--theme-primary-dark, #1558d6)));
+  --codex-ds-text: var(--text, var(--color-ink, var(--text-primary, #202124)));
+  --codex-ds-muted: var(--muted, var(--color-muted, var(--text-secondary, #5f6368)));
+  --codex-ds-surface: var(--surface, var(--color-surface, var(--bg-surface, #ffffff)));
+  --codex-ds-border: var(--border, var(--color-border, var(--line, #dadce0)));
+  --codex-ds-focus: #1a73e8;
+  --codex-ds-radius: 8px;
+}
+
+:where(body) {
+  color: var(--codex-ds-text);
+}
+
+:where(.text-muted, .muted, .secondary, small, figcaption, caption) {
+  color: var(--codex-ds-muted);
+}
+
+:where(a) {
+  color: var(--codex-ds-primary);
+}
+
+:where(button, .btn, .button, [role="button"], input[type="button"], input[type="submit"], input[type="reset"]) {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0.625rem 1rem;
+  border-radius: var(--codex-ds-radius);
+  border: 1px solid transparent;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+:where(.btn, .button, .btn-primary, .button-primary, .primary, button[type="submit"], input[type="submit"]) {
+  background: var(--codex-ds-primary);
+  color: #ffffff;
+}
+
+:where(.btn:hover, .button:hover, button:hover, [role="button"]:hover) {
+  filter: none;
+}
+
+:where(.btn-primary:hover, .button-primary:hover, button[type="submit"]:hover, input[type="submit"]:hover) {
+  background: var(--codex-ds-primary-strong);
+}
+
+:where(.btn-secondary, .button-secondary, .btn.ghost, .button-quiet, .btn-outline, .secondary, button.secondary) {
+  background: var(--codex-ds-surface);
+  color: var(--codex-ds-text);
+  border-color: var(--codex-ds-border);
+}
+
+:where(.btn-small, .btn.sm, .button-small, .button.sm) {
+  min-height: 40px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+}
+
+:where(.icon-button, .btn-icon, button.icon, button[aria-label]:not([aria-label=""])) {
+  width: 44px;
+  min-width: 44px;
+  padding: 0;
+  border-radius: var(--codex-ds-radius);
+}
+
+:where(button svg, .btn svg, .button svg, [role="button"] svg, button .material-icons, .btn .material-icons, .button .material-icons, button .icon, .btn .icon, .button .icon) {
+  width: 1.125rem;
+  height: 1.125rem;
+  min-width: 1.125rem;
+  font-size: 1.125rem;
+  line-height: 1;
+  stroke-width: 2;
+  flex: 0 0 auto;
+}
+
+:where(button .material-icons, .btn .material-icons, .button .material-icons) {
+  font-feature-settings: "liga";
+  vertical-align: middle;
+}
+
+:where(button:focus-visible, .btn:focus-visible, .button:focus-visible, [role="button"]:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible) {
+  outline: 3px solid var(--codex-ds-focus);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--codex-ds-surface) 80%, transparent);
+}
+
+:where(button:disabled, .btn:disabled, .button:disabled, [aria-disabled="true"]) {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+@media (max-width: 480px) {
+  :where(.btn, .button, button, input[type="button"], input[type="submit"], input[type="reset"]) {
+    width: auto;
+  }
+  :where(.form-actions > .btn, .form-actions > .button, .form-actions > button, .actions > .btn, .actions > .button, .actions > button) {
+    width: 100%;
+  }
+}
+</style>
+<style>
+/* codex-gentle-dark-theme: default graphite theme with soft, kind UI accents */
+:root {
+  color-scheme: dark;
+  --codex-gentle-bg: #15171c;
+  --codex-gentle-bg-soft: #1a1d23;
+  --codex-gentle-surface: #20242b;
+  --codex-gentle-surface-2: #272b33;
+  --codex-gentle-border: #343941;
+  --codex-gentle-text: #eef1f5;
+  --codex-gentle-muted: #c8ced8;
+  --codex-gentle-dim: #9aa4b2;
+  --codex-gentle-primary: #8ab4f8;
+  --codex-gentle-primary-strong: #aecbfa;
+  --codex-gentle-accent: #8fa0b8;
+  --codex-gentle-success: #9be7c1;
+  --bg: var(--codex-gentle-bg);
+  --background: var(--codex-gentle-bg);
+  --surface: var(--codex-gentle-surface);
+  --panel: var(--codex-gentle-surface);
+  --card: var(--codex-gentle-surface);
+  --text: var(--codex-gentle-text);
+  --text-main: var(--codex-gentle-text);
+  --text-primary: var(--codex-gentle-text);
+  --text-muted: var(--codex-gentle-muted);
+  --muted: var(--codex-gentle-muted);
+  --border: var(--codex-gentle-border);
+  --line: var(--codex-gentle-border);
+  --primary: var(--codex-gentle-primary);
+  --primary-dark: #6ea0ef;
+  --codex-ds-primary: var(--codex-gentle-primary);
+  --codex-ds-primary-strong: var(--codex-gentle-primary-strong);
+  --codex-ds-text: var(--codex-gentle-text);
+  --codex-ds-muted: var(--codex-gentle-muted);
+  --codex-ds-surface: var(--codex-gentle-surface);
+  --codex-ds-border: var(--codex-gentle-border);
+}
+
+:where(html, body) {
+  background: var(--codex-gentle-bg) !important;
+  color: var(--codex-gentle-text) !important;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif !important;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+:where(main, .app, .page, .layout, .content, .main-content, .app-content, .container, .dashboard, .view) {
+  background-color: transparent !important;
+  color: var(--codex-gentle-text) !important;
+}
+
+:where(.card, .panel, .section, .surface, .box, .widget, .modal-content, .dialog-content, .drawer, .dropdown, .menu, .table-wrapper, .table-wrap, .table-container, form) {
+  background: linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.015)),
+              var(--codex-gentle-surface) !important;
+  color: var(--codex-gentle-text) !important;
+  border-color: var(--codex-gentle-border) !important;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.28) !important;
+}
+
+:where(header, nav, aside, footer, .navbar, .sidebar, .topbar, .app-header, .app-footer) {
+  background: rgba(12, 15, 21, 0.92) !important;
+  color: var(--codex-gentle-text) !important;
+  border-color: var(--codex-gentle-border) !important;
+}
+
+:where(h1, h2, h3, h4, h5, h6, p, li, label, span, strong, td, th, legend, small, caption) {
+  color: inherit;
+}
+
+:where(h1, .page-title, .view-title) {
+  color: var(--codex-gentle-text) !important;
+}
+
+:where(h1:not(.no-emoji), .page-title:not(.no-emoji), .view-title:not(.no-emoji))::after {
+  content: "";
+  font-size: 0.82em;
+}
+
+:where(.empty-state, .empty, .no-data, .no-results, .loading, .placeholder)::before {
+  content: "";
+}
+
+:where(.text-muted, .muted, .secondary, .subtitle, .description, .help-text, .hint, small, figcaption, caption) {
+  color: var(--codex-gentle-muted) !important;
+}
+
+:where(a) {
+  color: var(--codex-gentle-primary-strong) !important;
+}
+
+:where(input, select, textarea) {
+  background: var(--codex-gentle-bg-soft) !important;
+  color: var(--codex-gentle-text) !important;
+  border-color: var(--codex-gentle-border) !important;
+}
+
+:where(input::placeholder, textarea::placeholder) {
+  color: var(--codex-gentle-dim) !important;
+}
+
+:where(table) {
+  color: var(--codex-gentle-text) !important;
+}
+
+:where(th) {
+  color: var(--codex-gentle-muted) !important;
+  background: rgba(255,255,255,0.035) !important;
+}
+
+:where(td) {
+  border-color: var(--codex-gentle-border) !important;
+}
+
+:where(button, .btn, .button, [role="button"], input[type="button"], input[type="submit"], input[type="reset"]) {
+  background: var(--codex-gentle-surface-2) !important;
+  color: var(--codex-gentle-text) !important;
+  border-color: var(--codex-gentle-border) !important;
+  box-shadow: none !important;
+}
+
+:where(.btn, .button, .btn-primary, .button-primary, .primary, button[type="submit"], input[type="submit"]) {
+  background: linear-gradient(180deg, rgba(174, 203, 250, 0.24), rgba(138, 180, 248, 0.16)),
+              #182235 !important;
+  color: #f8fbff !important;
+  border-color: rgba(174, 203, 250, 0.45) !important;
+}
+
+:where(button[type="submit"]:not(.icon-button):not(.btn-icon), input[type="submit"])::after {
+  content: "";
+  font-size: 0.9em;
+}
+
+:where(.btn-secondary, .button-secondary, .btn.ghost, .button-quiet, .btn-outline, .secondary, button.secondary) {
+  background: rgba(255,255,255,0.035) !important;
+  color: var(--codex-gentle-text) !important;
+  border-color: var(--codex-gentle-border) !important;
+}
+
+:where(.badge, .tag, .chip, .pill, .status) {
+  background: rgba(248, 199, 220, 0.12) !important;
+  color: var(--codex-gentle-text) !important;
+  border-color: rgba(248, 199, 220, 0.26) !important;
+}
+
+:where(hr) {
+  border-color: var(--codex-gentle-border) !important;
+}
+
+:where(svg, canvas, img) {
+  color: inherit;
+}
+</style>
+
+
+<style id="up-oracular-design-system">
+:root {
+  color-scheme: dark;
+  --uo-bg: #15171c;
+  --uo-panel: #20242b;
+  --uo-text: #e9ecf1;
+  --uo-muted: #b2b9c4;
+  --uo-border: #343941;
+  --uo-accent: #7aa2d6;
+  --uo-radius-group: 10px;
+  --uo-radius-control: 8px;
+}
+
+html, body {
+  background: var(--uo-bg) !important;
+  color: var(--uo-text) !important;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body, input, select, textarea, button {
+  color: var(--uo-text);
+}
+
+.card, .panel, .modal, .dialog, dialog, .container,
+.box, .widget, .section, .sidebar, .drawer, .popover,
+[role="dialog"], [class*="card"], [class*="panel"] {
+  background-color: var(--uo-panel) !important;
+  border-color: var(--uo-border) !important;
+  border-radius: var(--uo-radius-group) !important;
+}
+
+button, input, select, textarea, .btn, .button,
+[role="button"], [role="menuitem"], .dropdown-item,
+.menu-item, [class*="button"], [class*="dropdown-item"] {
+  border-radius: var(--uo-radius-control) !important;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+input, select, textarea {
+  background-color: var(--uo-panel) !important;
+  border: 1px solid var(--uo-border) !important;
+  padding: 8px !important;
+  box-sizing: border-box;
+}
+
+label, .form-label, [class*="form-label"] {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--uo-muted) !important;
+  font-size: 13px !important;
+  line-height: 1.35;
+}
+
+.uo-field {
+  display: flex;
+  flex-direction: column;
+}
+
+.uo-feedback-box {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 2147483647;
+  min-width: 220px;
+  max-width: min(420px, calc(100vw - 32px));
+  padding: 10px 12px;
+  border: 1px solid var(--uo-border);
+  border-radius: var(--uo-radius-group);
+  background: var(--uo-panel);
+  color: var(--uo-text);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.32);
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+
+.uo-feedback-box.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.uo-feedback-box[data-kind="ok"] {
+  border-color: #8fc2a6;
+  color: #8fc2a6;
+}
+
+.uo-feedback-box[data-kind="err"] {
+  border-color: #d98b93;
+  color: #d98b93;
+}
+
+form[aria-busy="true"] {
+  opacity: 0.72;
+  cursor: progress;
+}
+
+form[aria-busy="true"] :is(button, input[type="submit"], input[type="button"]) {
+  pointer-events: none;
+}
+
+button, .btn-primary, .button-primary,
+[class*="primary"][role="button"] {
+  background-color: var(--uo-accent) !important;
+}
+
+p, small, .muted, .secondary, .subtitle,
+[class*="muted"], [class*="secondary"] {
+  color: var(--uo-muted) !important;
+}
+
+hr, table, th, td, fieldset {
+  border-color: var(--uo-border) !important;
+}
+
+a {
+  color: var(--uo-accent);
+}
+
+/* Geometrias funcionais permanecem circulares. */
+.avatar, .spinner, .loading-ring, .dot, .status-dot,
+[class*="avatar"], [class*="spinner"], [class*="loading-ring"] {
+  border-radius: 50% !important;
+}
+</style>
+<script id="up-oracular-form-feedback">
+(function () {
+  'use strict';
+  if (window.UpOracularFeedback) return;
+
+  var timer = null;
+  function notify(kind, message) {
+    var box = document.getElementById('uo-feedback-box');
+    if (!box) {
+      box = document.createElement('div');
+      box.id = 'uo-feedback-box';
+      box.className = 'uo-feedback-box';
+      box.setAttribute('role', 'status');
+      box.setAttribute('aria-live', 'polite');
+      document.body.appendChild(box);
+    }
+    box.dataset.kind = kind === 'err' ? 'err' : 'ok';
+    box.textContent = String(message || (kind === 'err' ? 'Nao foi possivel concluir.' : 'Operacao concluida.'));
+    box.classList.add('is-visible');
+    clearTimeout(timer);
+    timer = setTimeout(function () {
+      box.classList.remove('is-visible');
+    }, 1000);
+  }
+
+  function connectLabels(form) {
+    form.querySelectorAll('input:not([type="hidden"]), select, textarea').forEach(function (field, index) {
+      var id = field.id || ('uo-field-' + index + '-' + Math.random().toString(36).slice(2, 7));
+      field.id = id;
+      var label = form.querySelector('label[for="' + id + '"]');
+      if (!label) {
+        var sibling = field.previousElementSibling;
+        if (sibling && sibling.tagName === 'LABEL') {
+          sibling.htmlFor = id;
+          label = sibling;
+        }
+      }
+      if (label && field.parentElement && !field.parentElement.classList.contains('uo-field')) {
+        field.parentElement.classList.add('uo-field');
+      }
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('form').forEach(connectLabels);
+  });
+
+  document.addEventListener('submit', function (event) {
+    var form = event.target;
+    if (!form || form.tagName !== 'FORM') return;
+    form.setAttribute('aria-busy', 'true');
+    notify('ok', 'Enviando...');
+    window.setTimeout(function () {
+      if (form.getAttribute('aria-busy') === 'true') {
+        form.removeAttribute('aria-busy');
+      }
+    }, 10000);
+  }, true);
+
+  window.UpOracularFeedback = {
+    ok: function (message) { notify('ok', message); },
+    err: function (message) { notify('err', message); },
+    done: function (form, message) {
+      if (form) form.removeAttribute('aria-busy');
+      notify('ok', message);
+    },
+    fail: function (form, message) {
+      if (form) form.removeAttribute('aria-busy');
+      notify('err', message);
+    }
+  };
+}());
+</script>
+
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+  <style id="cdx-mi-style">.cdx-mi{font-size:1.1em;line-height:1;vertical-align:-0.15em}</style>
+  <style id="cdx-border-to-color">
+/* Padronização de borders → cores complementares (FROTA-20) */
+input:not([type="hidden"]),
+textarea,
+select,
+[class*="input"],
+[class*="field"],
+[class*="form"],
+.card,
+.panel,
+.box,
+.container,
+.modal,
+[class*="modal"],
+[class*="dialog"],
+dialog {
+  border: none !important;
+  border-width: 0 !important;
+}
+
+input:not([type="hidden"]),
+textarea,
+select {
+  background-color: #20242b !important;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1) !important;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1), 0 0 0 2px #e9ecf1 !important;
+}
+  </style>
+
+  <style id="fleet-mobile-wcag-aa">
+    /* Contrato FROTA: ergonomia S20 e WCAG 2.1 AA. */
+    html, body { max-width: 100%; overflow-x: hidden; }
+    :is(button, [role="button"], input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not([type="range"]), select, textarea) {
+      min-width: 48px !important;
+      min-height: 48px !important;
+      touch-action: manipulation;
+    }
+  </style>
+</head>
+<body>
+
+  <main class="cal-page">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:1.5rem;">
+      <h1 style="color:var(--dark-color);"><i class="material-icons cdx-mi" aria-hidden="true">calendar_month</i> Calendário de Entradas</h1>
+      <button type="button" class="cal-nav-btn" id="backDashboard" style="width:auto;padding:0 16px;">← Voltar ao painel</button>
+    </div>
+    <p id="calendarStatus" role="status" aria-live="polite">Validando sessão e carregando seus registros...</p>
+
+    <div class="cal-layout">
+
+      <!-- Calendar widget -->
+      <div>
+        <div class="cal-widget" role="application" aria-label="Calendário de entradas">
+          <nav class="cal-nav" aria-label="Navegação de mês">
+            <button class="cal-nav-btn" id="prevMonth" onclick="changeMonth(-1)" aria-label="Mês anterior">‹</button>
+            <h2 id="calTitle" aria-live="polite"></h2>
+            <button class="cal-nav-btn" id="nextMonth" onclick="changeMonth(1)" aria-label="Próximo mês">›</button>
+          </nav>
+
+          <div class="cal-grid" id="calGrid" role="grid" aria-label="Dias do mês">
+            <!-- Weekday headers -->
+            <div class="cal-weekday" role="columnheader" abbr="Domingo">Dom</div>
+            <div class="cal-weekday" role="columnheader" abbr="Segunda">Seg</div>
+            <div class="cal-weekday" role="columnheader" abbr="Terça">Ter</div>
+            <div class="cal-weekday" role="columnheader" abbr="Quarta">Qua</div>
+            <div class="cal-weekday" role="columnheader" abbr="Quinta">Qui</div>
+            <div class="cal-weekday" role="columnheader" abbr="Sexta">Sex</div>
+            <div class="cal-weekday" role="columnheader" abbr="Sábado">Sáb</div>
+            <!-- Days injected by JS -->
+          </div>
+
+          <div class="cal-legend" aria-label="Legenda">
+            <span class="legend-item"><span class="legend-dot" style="background:var(--primary-color)"></span>Entrada de diário</span>
+            <span class="legend-item"><span class="legend-dot" style="background:var(--secondary-color)"></span>Composição gerada</span>
+            <span class="legend-item"><span class="legend-dot" style="background:var(--primary-color);outline:2px solid var(--primary-color);outline-offset:1px"></span>Hoje</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Day detail sidebar -->
+      <aside class="cal-detail" aria-live="polite" aria-label="Detalhes do dia selecionado">
+        <h3 id="detailTitle">Selecione um dia</h3>
+        <div id="detailContent">
+          <div class="detail-empty">
+            <div class="empty-icon"><i class="material-icons cdx-mi" aria-hidden="true">calendar_month</i></div>
+            <p>Clique em um dia para ver suas entradas.</p>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Monthly summary -->
+      <section class="cal-summary" aria-labelledby="summaryTitle">
+        <h3 id="summaryTitle"><i class="material-icons cdx-mi" aria-hidden="true">bar_chart</i> Resumo do Mês</h3>
+        <div class="summary-stats">
+          <div class="summary-stat">
+            <div class="val" id="sumEntries">0</div>
+            <div class="lbl">Entradas</div>
+          </div>
+          <div class="summary-stat">
+            <div class="val" id="sumCompositions">0</div>
+            <div class="lbl">Composições</div>
+          </div>
+          <div class="summary-stat">
+            <div class="val" id="sumStreak">0</div>
+            <div class="lbl">Dias consecutivos</div>
+          </div>
+          <div class="summary-stat">
+            <div class="val" id="sumMood"><i class="material-icons cdx-mi" aria-hidden="true">sentiment_satisfied</i></div>
+            <div class="lbl">Humor predominante</div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    var SESSION_KEY = 'sano_session';
+    var state = { token: '', user: null };
+    var today = new Date();
+    var ENTRIES = Object.create(null);
+    var viewYear = today.getFullYear();
+    var viewMonth = today.getMonth();
+    var selectedDate = null;
+    var MONTHS_PT = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho',
+                     'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+
+    function pad(number) { return String(number).padStart(2, '0'); }
+    function key(year, month, day) { return year + '-' + pad(month + 1) + '-' + pad(day); }
+    function setStatus(message, isError) {
+      var status = document.getElementById('calendarStatus');
+      status.textContent = message || '';
+      status.style.color = isError ? '#dc2626' : '';
+    }
+
+    function api(action) {
+      return new Promise(function(resolve, reject) {
+        if (!state.token || !window.google || !google.script || !google.script.run) {
+          reject(new Error('Sessão ou conexão indisponível.')); return;
+        }
+        google.script.run.withSuccessHandler(function(response) {
+          if (!response || response.success === false) {
+            var error = new Error(response && response.error ? response.error : 'Não foi possível carregar o calendário.');
+            error.code = response && response.code; reject(error); return;
+          }
+          resolve(Object.prototype.hasOwnProperty.call(response, 'data') ? response.data : response);
+        }).withFailureHandler(function(error) {
+          reject(new Error(error && error.message ? error.message : 'Falha de comunicação.'));
+        }).sanoClientApi(action, state.token, {});
+      });
+    }
+
+    function indexEntries(diaryEntries, compositions) {
+      ENTRIES = Object.create(null);
+      var composedEntryIds = Object.create(null);
+      (compositions || []).forEach(function(composition) { composedEntryIds[String(composition.entryId || '')] = true; });
+      (diaryEntries || []).forEach(function(entry) {
+        var date = new Date(entry.createdAt);
+        if (isNaN(date.getTime())) return;
+        var dateKey = key(date.getFullYear(), date.getMonth(), date.getDate());
+        if (!ENTRIES[dateKey]) ENTRIES[dateKey] = [];
+        ENTRIES[dateKey].push({
+          id: String(entry.id || ''),
+          mood: String(entry.mood || 'Momento'),
+          text: String(entry.content || ''),
+          status: String(entry.status || ''),
+          hasComp: !!composedEntryIds[String(entry.id || '')]
+        });
+      });
+    }
+
+    /* ── Render calendar ────────────────────────────────────────────── */
+    function renderCalendar() {
+      const title  = document.getElementById('calTitle');
+      const grid   = document.getElementById('calGrid');
+
+      title.textContent = MONTHS_PT[viewMonth] + ' ' + viewYear;
+
+      /* Remove old day cells (keep 7 weekday headers) */
+      while (grid.children.length > 7) grid.removeChild(grid.lastChild);
+
+      const firstDay  = new Date(viewYear, viewMonth, 1).getDay();
+      const daysInMon = new Date(viewYear, viewMonth + 1, 0).getDate();
+      const prevDays  = new Date(viewYear, viewMonth,     0).getDate();
+
+      /* Prev-month filler */
+      for (let i = firstDay - 1; i >= 0; i--) {
+        grid.appendChild(makeDay(prevDays - i, true, false, null));
+      }
+
+      /* Current month */
+      for (let d = 1; d <= daysInMon; d++) {
+        const isToday = d === today.getDate() && viewMonth === today.getMonth() && viewYear === today.getFullYear();
+        const dateKey = key(viewYear, viewMonth, d);
+        const entries = ENTRIES[dateKey] || [];
+        grid.appendChild(makeDay(d, false, isToday, dateKey, entries));
+      }
+
+      /* Next-month filler */
+      const total   = firstDay + daysInMon;
+      const trailing = total % 7 === 0 ? 0 : 7 - (total % 7);
+      for (let d = 1; d <= trailing; d++) {
+        grid.appendChild(makeDay(d, true, false, null));
+      }
+
+      updateSummary();
+    }
+
+    function makeDay(num, otherMonth, isToday, dateKey, entries = []) {
+      const cell = document.createElement('div');
+      cell.className = 'cal-day'
+        + (otherMonth ? ' other-month' : '')
+        + (isToday    ? ' today'       : '')
+        + (dateKey && dateKey === selectedDate ? ' selected' : '')
+        + (entries.length > 0 ? ' has-entry' : '');
+
+      cell.setAttribute('role', 'gridcell');
+      if (!otherMonth && dateKey) {
+        cell.setAttribute('tabindex', '0');
+        cell.setAttribute('aria-label', num + ' de ' + MONTHS_PT[viewMonth] + (entries.length ? ', ' + entries.length + ' entrada(s)' : ''));
+        cell.onclick = function() { selectDay(dateKey, num); };
+        cell.onkeydown = function(event) { if (event.key === 'Enter' || event.key === ' ') selectDay(dateKey, num); };
+      }
+      var dayNumber = document.createElement('span'); dayNumber.className = 'day-num'; dayNumber.textContent = num; cell.appendChild(dayNumber);
+
+      if (entries.length > 0) {
+        const dots = document.createElement('div');
+        dots.className = 'day-dots';
+        entries.forEach(e => {
+          const d = document.createElement('span');
+          d.className = 'day-dot' + (e.hasComp ? ' composition' : '');
+          d.setAttribute('aria-hidden','true');
+          dots.appendChild(d);
+        });
+        cell.appendChild(dots);
+      }
+
+      return cell;
+    }
+
+    /* ── Day selection ──────────────────────────────────────────────── */
+    function selectDay(dateKey, num) {
+      selectedDate = dateKey;
+      renderCalendar();
+
+      const entries = ENTRIES[dateKey] || [];
+      const title   = document.getElementById('detailTitle');
+      const content = document.getElementById('detailContent');
+
+      title.textContent = num + ' de ' + MONTHS_PT[viewMonth] + ' de ' + viewYear;
+
+      if (entries.length === 0) {
+        content.innerHTML = '';
+        var empty = document.createElement('div'); empty.className = 'detail-empty'; empty.textContent = 'Nenhuma entrada neste dia.'; content.appendChild(empty);
+        return;
+      }
+      content.innerHTML = '';
+      entries.forEach(function(entry) {
+        var article = document.createElement('article'); article.className = 'detail-entry';
+        var mood = document.createElement('p'); mood.className = 'entry-mood'; mood.textContent = entry.mood;
+        var text = document.createElement('p'); text.className = 'entry-text'; text.textContent = entry.text;
+        article.appendChild(mood); article.appendChild(text);
+        if (entry.hasComp) { var composition = document.createElement('p'); composition.className = 'entry-comp'; composition.textContent = '🎵 Composição gerada'; article.appendChild(composition); }
+        content.appendChild(article);
+      });
+    }
+
+    /* ── Month navigation ───────────────────────────────────────────── */
+    function changeMonth(delta) {
+      viewMonth += delta;
+      if (viewMonth > 11) { viewMonth = 0;  viewYear++; }
+      if (viewMonth < 0)  { viewMonth = 11; viewYear--; }
+      selectedDate = null;
+      document.getElementById('detailTitle').textContent = 'Selecione um dia';
+      document.getElementById('detailContent').innerHTML = '<div class="detail-empty"><p>Clique em um dia para ver suas entradas.</p></div>';
+      renderCalendar();
+    }
+
+    /* ── Monthly summary ────────────────────────────────────────────── */
+    function updateSummary() {
+      let entries = 0, compositions = 0;
+      const moodCount = {};
+
+      Object.keys(ENTRIES).forEach(function(dateKey) {
+        var list = ENTRIES[dateKey];
+        if (dateKey.indexOf(viewYear + '-' + pad(viewMonth + 1)) !== 0) return;
+        entries      += list.length;
+        compositions += list.filter(function(entry) { return entry.hasComp; }).length;
+        list.forEach(function(entry) {
+          var mood = entry.mood || 'Momento';
+          moodCount[mood] = (moodCount[mood] || 0) + 1;
+        });
+      });
+      var moodKeys = Object.keys(moodCount).sort(function(a, b) { return moodCount[b] - moodCount[a]; });
+      var topMood = moodKeys.length ? moodKeys[0] : '—';
+      var streak = 0, longestStreak = 0;
+      var daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+      for (var day = 1; day <= daysInMonth; day++) {
+        if ((ENTRIES[key(viewYear, viewMonth, day)] || []).length) { streak++; longestStreak = Math.max(longestStreak, streak); }
+        else streak = 0;
+      }
+
+      document.getElementById('sumEntries').textContent     = entries;
+      document.getElementById('sumCompositions').textContent = compositions;
+      document.getElementById('sumStreak').textContent      = longestStreak;
+      document.getElementById('sumMood').textContent        = topMood;
+    }
+
+    function redirectToLogin() {
+      var baseUrl = window.BASE_URL || String(window.location.href).split('?')[0];
+      if (window.top) window.top.location.href = baseUrl + '?page=login';
+      else window.location.href = baseUrl + '?page=login';
+    }
+
+    function restore() {
+      try {
+        var saved = sessionStorage.getItem(SESSION_KEY);
+        if (saved) { var parsed = JSON.parse(saved); if (parsed && parsed.token) state.token = parsed.token; }
+      } catch (error) {}
+      var match = String(window.location.hash || '').match(/(?:^#|&)tok=([^&]+)/);
+      if (match) state.token = decodeURIComponent(match[1]);
+      if (!state.token) { redirectToLogin(); return; }
+      api('bootstrap').then(function(data) {
+        state.user = data.user;
+        return Promise.all([api('diary.list'), api('compositions.list')]);
+      }).then(function(results) {
+        indexEntries(results[0].entries || [], results[1].compositions || []);
+        setStatus(Object.keys(ENTRIES).length ? 'Registros carregados.' : 'Você ainda não possui entradas no diário.');
+        renderCalendar();
+      }).catch(function(error) {
+        setStatus(error.message, true);
+        if (error.code === 'AUTH_REQUIRED') redirectToLogin();
+      });
+    }
+
+    document.getElementById('backDashboard').addEventListener('click', function() {
+      var baseUrl = window.BASE_URL || String(window.location.href).split('?')[0];
+      var destination = baseUrl + '?page=app#tok=' + encodeURIComponent(state.token);
+      if (window.top) window.top.location.href = destination; else window.location.href = destination;
+    });
+    document.addEventListener('DOMContentLoaded', restore);
+  </script>
+
+<script>
+/* codex-school-community-ux-script: pequenos ajustes de contexto escolar */
+(function() {
+  if (window.__codexSchoolCommunityUx) return;
+  window.__codexSchoolCommunityUx = true;
+
+  function ready(fn) {
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fn, { once: true });
+    else fn();
+  }
+
+  ready(function() {
+    document.documentElement.setAttribute('data-community-context', 'school');
+
+    document.querySelectorAll('form').forEach(function(form) {
+      if (!form.getAttribute('aria-label') && !form.getAttribute('aria-labelledby')) {
+        form.setAttribute('aria-label', 'Formulario da comunidade escolar');
+      }
+    });
+
+    document.querySelectorAll('input, select, textarea').forEach(function(field) {
+      if (!field.id && field.name) field.id = 'field-' + String(field.name).replace(/[^a-zA-Z0-9_-]/g, '-');
+      if (field.required && !field.getAttribute('aria-required')) field.setAttribute('aria-required', 'true');
+      if (!field.getAttribute('autocomplete')) {
+        var type = (field.getAttribute('type') || '').toLowerCase();
+        var name = (field.getAttribute('name') || field.id || '').toLowerCase();
+        if (type === 'email' || name.indexOf('email') >= 0) field.setAttribute('autocomplete', 'email');
+        else if (name.indexOf('nome') >= 0 || name.indexOf('name') >= 0) field.setAttribute('autocomplete', 'name');
+        else if (name.indexOf('senha') >= 0 || name.indexOf('password') >= 0) field.setAttribute('autocomplete', 'current-password');
+      }
+    });
+
+    document.querySelectorAll('button:not([type])').forEach(function(button) {
+      button.setAttribute('type', 'button');
+    });
+  });
+})();
+</script>
+
+<script>
+/* codex-project-behavior-standardization: microcomportamentos compartilhados */
+(function() {
+  if (window.__codexProjectBehaviorStandardization) return;
+  window.__codexProjectBehaviorStandardization = true;
+
+  var SUBMIT_LOCK_MS = 2500;
+  var invalidFocusPending = false;
+
+  function isElement(value) {
+    return value && value.nodeType === 1;
+  }
+
+  function prefersReducedMotion() {
+    return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  }
+
+  function unlockForm(form, button) {
+    if (isElement(form)) {
+      delete form.dataset.codexSubmitting;
+      if (form.getAttribute('aria-busy') === 'true') form.setAttribute('aria-busy', 'false');
+    }
+
+    if (isElement(button) && button.dataset.codexSubmitLocked === 'true') {
+      delete button.dataset.codexSubmitLocked;
+      button.disabled = false;
+      button.removeAttribute('aria-disabled');
+    }
+  }
+
+  function restoreSubmitLocks(scope) {
+    var root = scope && scope.querySelectorAll ? scope : document;
+
+    root.querySelectorAll('form[data-codex-submitting="true"]').forEach(function(form) {
+      unlockForm(form);
+    });
+
+    root.querySelectorAll('[data-codex-submit-locked="true"]').forEach(function(button) {
+      unlockForm(null, button);
+    });
+  }
+
+  document.addEventListener('submit', function(event) {
+    var form = event.target;
+    if (!isElement(form) || String(form.tagName).toLowerCase() !== 'form') return;
+    if (form.hasAttribute('data-no-submit-lock')) return;
+
+    if (form.dataset.codexSubmitting === 'true') {
+      event.preventDefault();
+      return;
+    }
+
+    if (typeof form.checkValidity === 'function' && !form.checkValidity()) return;
+
+    form.dataset.codexSubmitting = 'true';
+    form.setAttribute('aria-busy', 'true');
+
+    var button = event.submitter || form.querySelector('button[type="submit"], input[type="submit"], button:not([type])');
+    if (isElement(button) && !button.disabled && !button.hasAttribute('data-no-submit-lock')) {
+      button.dataset.codexSubmitLocked = 'true';
+      button.disabled = true;
+      button.setAttribute('aria-disabled', 'true');
+    }
+
+    window.setTimeout(function() {
+      unlockForm(form, button);
+    }, SUBMIT_LOCK_MS);
+  }, true);
+
+  document.addEventListener('invalid', function(event) {
+    var field = event.target;
+    if (!isElement(field) || invalidFocusPending) return;
+    invalidFocusPending = true;
+
+    window.setTimeout(function() {
+      invalidFocusPending = false;
+      if (!document.documentElement.contains(field)) return;
+      try {
+        field.scrollIntoView({ block: 'center', inline: 'nearest', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
+        field.focus({ preventScroll: true });
+      } catch (error) {
+        field.focus();
+      }
+    }, 0);
+  }, true);
+
+  document.addEventListener('keydown', function(event) {
+    if (event.key !== 'Escape') return;
+    var closedSomething = false;
+
+    var dialogs = Array.prototype.slice.call(document.querySelectorAll('dialog[open]'));
+    var dialog = dialogs[dialogs.length - 1];
+    if (dialog && typeof dialog.close === 'function') {
+      dialog.close();
+      closedSomething = true;
+    }
+
+    if (!closedSomething) {
+      var details = Array.prototype.slice.call(document.querySelectorAll('details[open]'));
+      var detail = details[details.length - 1];
+      if (detail) {
+        detail.removeAttribute('open');
+        closedSomething = true;
+      }
+    }
+
+    document.querySelectorAll('[aria-expanded="true"]').forEach(function(toggle) {
+      toggle.setAttribute('aria-expanded', 'false');
+      closedSomething = true;
+    });
+
+    if (closedSomething) event.preventDefault();
+  }, true);
+
+  window.addEventListener('pageshow', function() {
+    restoreSubmitLocks(document);
+  });
+
+  document.addEventListener('visibilitychange', function() {
+    if (document.visibilityState === 'visible') restoreSubmitLocks(document);
+  });
+})();
+</script>
+</body>
+</html>
+
+
+
+

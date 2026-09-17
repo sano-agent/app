@@ -1,0 +1,163 @@
+<style id="sano-game-assets-style">
+  .sano-asset{display:block;max-width:100%;height:auto;object-fit:contain}
+  .sano-asset[hidden]{display:none!important}
+  .sano-asset--hero{width:100%;aspect-ratio:16/9;max-height:285px;object-fit:cover;border-radius:16px}
+  .sano-asset--journey{width:min(100%,900px);max-height:210px;margin-inline:auto}
+  .sano-asset--mascot{width:clamp(92px,18vw,160px);max-height:170px;filter:drop-shadow(0 12px 18px rgba(0,0,0,.22))}
+  .sano-asset--genres{width:min(100%,720px);max-height:210px;margin-inline:auto}
+  .sano-asset--blocks{width:min(100%,480px);max-height:300px;margin-inline:auto}
+  .sano-asset--seal{width:clamp(120px,26vw,210px);max-height:210px;margin-inline:auto}
+  .sano-assets-status{margin:.5rem 0;color:var(--uo-muted,#b2b9c4);font-size:.82rem}
+  .sano-assets-status:empty{display:none}
+  .sano-studio-surface[data-asset-background-ready="true"]{
+    background-image:linear-gradient(rgba(21,23,28,.88),rgba(21,23,28,.88)),var(--sano-notebook-texture)!important;
+    background-position:center!important;background-size:cover!important
+  }
+  :root[data-theme="light"] .sano-studio-surface[data-asset-background-ready="true"]{
+    background-image:linear-gradient(rgba(255,255,255,.78),rgba(255,255,255,.78)),var(--sano-notebook-texture)!important
+  }
+  .sano-process-board{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:12px;margin:0 0 1rem;padding:14px;border:1px solid var(--uo-border,#343941);border-radius:14px;background:var(--uo-panel,#20242b)}
+  .sano-process-board .sano-asset--journey{grid-column:1/-1;grid-row:1}
+  .sano-process-board .sano-asset--mascot{grid-column:2;grid-row:1;align-self:end}
+  .sano-process-board figcaption{grid-column:1/-1;color:var(--uo-muted,#b2b9c4);font-size:.86rem}
+  .sano-composition-guide{margin:14px 0;padding:12px;border:1px dashed var(--uo-border,#343941);border-radius:12px;text-align:center}
+  .sano-composition-guide figcaption{margin-top:8px;color:var(--uo-muted,#b2b9c4);font-size:.84rem}
+  .sano-authorship-celebration{margin:16px 0;padding:14px;border:1px solid var(--uo-border,#343941);border-radius:14px;text-align:center;background:var(--uo-panel,#20242b)}
+  .sano-authorship-celebration p{margin:.6rem 0 0}
+  @media(max-width:560px){.sano-asset--hero{max-height:205px}.sano-asset--journey{max-height:145px}.sano-process-board .sano-asset--mascot{width:86px}}
+  @media(prefers-reduced-motion:reduce){.sano-asset{animation:none!important;transition:none!important}}
+</style>
+<script id="sano-game-assets-client">
+(function () {
+  'use strict';
+  if (window.SanoAgentAssets) return;
+
+  var manifest = { assets:{} };
+  var driveHost = 'drive.google.com';
+  var observer = null;
+
+  function safeUrl(value) {
+    try {
+      var parsed = new URL(String(value || ''));
+      return parsed.protocol === 'https:' && parsed.hostname === driveHost ? parsed.href : '';
+    } catch (_) { return ''; }
+  }
+
+  function url(name) {
+    return safeUrl((manifest.assets || {})[String(name || '')]);
+  }
+
+  function setStatus(message) {
+    document.querySelectorAll('[data-asset-status]').forEach(function(node) {
+      node.textContent = message || '';
+    });
+  }
+
+  function applyImage(node) {
+    if (!node || !node.dataset || node.dataset.assetPending === 'true' || node.dataset.assetReady === 'true') return Promise.resolve(true);
+    var source = url(node.dataset.assetFile);
+    if (!source) {
+      node.hidden = true;
+      node.dataset.assetReady = 'false';
+      return Promise.resolve(false);
+    }
+    node.dataset.assetPending = 'true';
+    return new Promise(function(resolve) {
+      var settled = false;
+      var timer = window.setTimeout(function() { finish(false); }, 12000);
+      function finish(ok) {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timer);
+        delete node.dataset.assetPending;
+        node.hidden = !ok || node.hasAttribute('data-asset-deferred');
+        node.dataset.assetReady = ok ? 'true' : 'false';
+        if (!ok) node.removeAttribute('src');
+        resolve(ok);
+      }
+      node.onload = function() { finish(Boolean(node.naturalWidth)); };
+      node.onerror = function() { finish(false); };
+      node.referrerPolicy = 'no-referrer';
+      node.decoding = 'async';
+      node.src = source;
+    });
+  }
+
+  function applyBackground(node) {
+    if (!node || !node.dataset || node.dataset.assetBackgroundReady === 'true') return true;
+    var source = url(node.dataset.assetBackground);
+    if (!source) {
+      node.dataset.assetBackgroundReady = 'false';
+      return false;
+    }
+    node.style.setProperty('--sano-notebook-texture', 'url("' + source.replace(/"/g, '%22') + '")');
+    node.dataset.assetBackgroundReady = 'true';
+    return true;
+  }
+
+  function selectAll(root, selector) {
+    var nodes = [];
+    if (root && root.matches && root.matches(selector)) nodes.push(root);
+    if (root && root.querySelectorAll) nodes = nodes.concat(Array.prototype.slice.call(root.querySelectorAll(selector)));
+    return nodes;
+  }
+
+  function applyAll(root) {
+    root = root || document;
+    selectAll(root, '[data-asset-background]').forEach(applyBackground);
+    return Promise.all(selectAll(root, 'img[data-asset-file]').map(applyImage));
+  }
+
+  function reveal(name) {
+    var selector = 'img[data-asset-file="' + String(name || '').replace(/"/g, '\\"') + '"]';
+    document.querySelectorAll(selector).forEach(function(node) {
+      node.removeAttribute('data-asset-deferred');
+      if (node.dataset.assetReady === 'true') node.hidden = false;
+    });
+  }
+
+  function watchDynamicContent() {
+    if (observer || !window.MutationObserver || !document.body) return;
+    observer = new MutationObserver(function(records) {
+      records.forEach(function(record) {
+        Array.prototype.forEach.call(record.addedNodes || [], function(node) {
+          if (node && node.nodeType === 1) applyAll(node);
+        });
+      });
+    });
+    observer.observe(document.body, { childList:true, subtree:true });
+  }
+
+  function applyManifest(value) {
+    manifest = value || { assets:{} };
+    window.__gameAssetManifest = manifest;
+    document.documentElement.dataset.gameAssetsState = 'loading';
+    setStatus('Carregando elementos visuais do Google Drive…');
+    applyAll(document).then(function(results) {
+      var failed = results.filter(function(ok) { return !ok; }).length;
+      var ready = failed === 0 && manifest.ok === true;
+      document.documentElement.dataset.gameAssetsState = ready ? 'ready' : 'fallback';
+      setStatus(ready ? '' : 'Alguns elementos visuais estão indisponíveis; a criação continua normalmente.');
+      watchDynamicContent();
+      window.dispatchEvent(new CustomEvent('sanoagentassetsready', { detail:manifest }));
+      window.dispatchEvent(new CustomEvent('gameassetsready', { detail:manifest }));
+    });
+  }
+
+  function load() {
+    if (!(window.google && google.script && google.script.run)) {
+      document.documentElement.dataset.gameAssetsState = 'fallback';
+      setStatus('Assets do Drive indisponíveis nesta visualização.');
+      return;
+    }
+    google.script.run.withSuccessHandler(applyManifest).withFailureHandler(function() {
+      document.documentElement.dataset.gameAssetsState = 'fallback';
+      setStatus('Não foi possível acessar os assets do Google Drive.');
+    }).getGameAssetManifest();
+  }
+
+  window.SanoAgentAssets = { load:load, url:url, applyManifest:applyManifest, applyAll:applyAll, reveal:reveal };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', load, { once:true });
+  else load();
+}());
+</script>
